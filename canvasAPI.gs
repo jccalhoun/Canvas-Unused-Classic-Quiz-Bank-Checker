@@ -334,7 +334,16 @@ function canvasAPI(endpoint, opts, filter) {
               // Resilient pagination regex
               var linkMatch = /<([^>]+)>;\s*rel=["']?next["']?/i.exec(links[l]);
               if (linkMatch !== null) {
-                url = linkMatch[1];
+                var nextUrl = linkMatch[1];
+                // Canvas occasionally sends a next-page Link with the scheme/host
+                // stripped out (e.g. "http:///api/v1/..."), which UrlFetchApp can't
+                // resolve. If that happens, repair it using the configured host.
+                var hostPart = /^https?:\/\/[^\/]+/i.exec(nextUrl);
+                if (!hostPart) {
+                  var pathOnly = nextUrl.replace(/^https?:\/*/i, '/');
+                  nextUrl = 'https://' + userProperties.host + pathOnly;
+                }
+                url = nextUrl;
               }
             }
           }

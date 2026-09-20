@@ -71,10 +71,18 @@ function runBankAudit() {
 
       var groups = [];
       try {
-        groups = canvasAPI('GET /api/v1/courses/:course_id/quizzes/:quiz_id/groups', {
+        var groupsResp = canvasAPI('GET /api/v1/courses/:course_id/quizzes/:quiz_id/groups', {
           ':course_id': courseId,
           ':quiz_id': quiz.id
-        }, ['id', 'name', 'assessment_question_bank_id']) || [];
+        }); // no filter — Canvas wraps this one as { quiz_groups: [...] }, not a bare array
+        if (groupsResp && Array.isArray(groupsResp.quiz_groups)) {
+          groups = groupsResp.quiz_groups;
+        } else if (Array.isArray(groupsResp)) {
+          groups = groupsResp; // in case some Canvas versions ever return it bare
+        }
+        if (!groups.length) {
+          throw new Error('No groups returned — falling back to derived group IDs.');
+        }
       } catch (e) {
         // Index endpoint not available on this Canvas build — derive from questions instead
         var groupIds = [];
