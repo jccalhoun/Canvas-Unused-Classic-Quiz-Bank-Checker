@@ -180,10 +180,12 @@ function runBankAudit() {
     Logger.log('Bank questions fetched at ' + (new Date().getTime() - t0) + 'ms');
 
     var usage = {};
-    function note(bankId, quizTitle, how) {
+    var linked = {};
+    function note(bankId, quizTitle, how, isLinked) {
       if (!bankId) return;
       usage[bankId] = usage[bankId] || {};
       usage[bankId][quizTitle + ' — ' + how] = true;
+      if (isLinked) linked[bankId] = true;
     }
 
     var quizzes = canvasAPI('GET /api/v1/courses/:course_id/quizzes', {
@@ -250,14 +252,14 @@ function runBankAudit() {
     Object.keys(byQuiz).forEach(function(quizId) {
       var entry = byQuiz[quizId];
       entry.groupList.forEach(function(g) {
-        note(g.assessment_question_bank_id, entry.title, 'linked group "' + (g.name || 'unnamed') + '"');
+        note(g.assessment_question_bank_id, entry.title, 'linked group "' + (g.name || 'unnamed') + '"', true);
       });
       (Array.isArray(entry.questions) ? entry.questions : []).forEach(function(q) {
-        note(aqToBank[q.assessment_question_id], entry.title, 'question copied in');
+        note(aqToBank[q.assessment_question_id], entry.title, 'question copied in', false);
       });
     });
 
-    writeBankAuditSheet(banks, usage);
+    writeBankAuditSheet(banks, usage, linked);
     Logger.log('Total runtime: ' + (new Date().getTime() - t0) + 'ms');
   } catch (e) {
     Logger.log(e);
@@ -265,7 +267,7 @@ function runBankAudit() {
   }
 }
 
-function writeBankAuditSheet(banks, usage) {
+function writeBankAuditSheet(banks, usage, linked) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var name = 'Bank Audit';
   var sheet = ss.getSheetByName(name);
@@ -277,11 +279,12 @@ function writeBankAuditSheet(banks, usage) {
     return a.title.localeCompare(b.title) || a.id - b.id;
   }).forEach(function(b) {
     var u = usage[b.id];
+    var status = !u ? 'no' : (linked[b.id] ? 'LINKED' : 'COPIED ONLY');
     rows.push([
       b.id,
       b.title,
       b.assessment_question_count,
-      u ? 'YES' : 'no',
+      status,
       u ? Object.keys(u).join('\n') : ''
     ]);
   });
