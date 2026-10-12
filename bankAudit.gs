@@ -159,7 +159,7 @@ function runBankAudit() {
     var banks = canvasAPI('GET /api/v1/question_banks', {
       'context_type': 'Course',
       'context_id': courseId
-    }, ['id', 'title', 'assessment_question_count']);
+    }, ['id', 'title']);
 
     if (!banks || !banks.length) {
       SpreadsheetApp.getUi().alert('No question banks found for this course.');
@@ -174,8 +174,9 @@ function runBankAudit() {
 
     var aqToBank = {};
     banks.forEach(function(b, i) {
-      var qs = bankResults[i];
-      (Array.isArray(qs) ? qs : []).forEach(function(q) { aqToBank[q.id] = b.id; });
+      var qs = Array.isArray(bankResults[i]) ? bankResults[i] : [];
+      b.questionCount = qs.length;
+      qs.forEach(function(q) { aqToBank[q.id] = b.id; });
     });
     Logger.log('Bank questions fetched at ' + (new Date().getTime() - t0) + 'ms');
 
@@ -283,7 +284,7 @@ function writeBankAuditSheet(banks, usage, linked) {
     rows.push([
       b.id,
       b.title,
-      b.assessment_question_count,
+      b.questionCount,
       status,
       u ? Object.keys(u).join('\n') : ''
     ]);
