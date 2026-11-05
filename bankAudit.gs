@@ -62,6 +62,7 @@ function onOpen() {
   ui.createMenu('Canvas')
     .addItem('Specify Course', 'getCourseDlg')
     .addItem('Run Bank Audit', 'runBankAudit')
+    .addItem('Check New Quiz Banks', 'runNewQuizBankCheck')
     .addSeparator()
     .addItem('Configure API Settings', 'configurationDialog')
     .addItem('Forget API Settings', 'resetApiSettings')
