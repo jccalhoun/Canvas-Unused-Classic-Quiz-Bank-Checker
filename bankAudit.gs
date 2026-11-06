@@ -61,8 +61,8 @@ function onOpen() {
   var ui = SpreadsheetApp.getUi();
   ui.createMenu('Canvas')
     .addItem('Specify Course', 'getCourseDlg')
-    .addItem('Run Bank Audit', 'runBankAudit')
-    .addItem('Check New Quiz Banks', 'runNewQuizBankCheck')
+    .addItem('Run Bank Audit (Classic Quizzes)', 'runBankAudit')
+    .addItem('Run New Quiz Bank Audit', 'runNewQuizBankAudit')
     .addSeparator()
     .addItem('Configure API Settings', 'configurationDialog')
     .addItem('Forget API Settings', 'resetApiSettings')
@@ -261,7 +261,17 @@ function runBankAudit() {
       });
     });
 
-    writeBankAuditSheet(banks, usage, linked);
+    // Item banks used by New Quizzes, to show which Classic banks have been migrated.
+    // A failure here shouldn't sink the Classic audit.
+    var nqUsage = null;
+    try {
+      nqUsage = fetchNewQuizBankUsage(courseId, host);
+    } catch (nqErr) {
+      Logger.log('New Quizzes lookup failed: ' + nqErr);
+    }
+    Logger.log('New Quizzes items fetched at ' + (new Date().getTime() - t0) + 'ms');
+
+    writeBankAuditSheet(banks, usage, linked, nqUsage);
     Logger.log('Total runtime: ' + (new Date().getTime() - t0) + 'ms');
   } catch (e) {
     Logger.log(e);
@@ -269,14 +279,53 @@ function runBankAudit() {
   }
 }
 
-function writeBankAuditSheet(banks, usage, linked) {
+function normalizeBankTitle(title) {
+  return String(title || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/**
+* @function Describe the New Quizzes item bank(s) whose title matches a Classic bank.
+*           Matching is by title only, so shared titles are called out rather than trusted.
+*/
+function migratedBankNote(classicBank, nqByTitle, classicTitleCounts, nqUsage) {
+  if (!nqUsage) return 'New Quizzes lookup failed (see log)';
+  var key = normalizeBankTitle(classicBank.title);
+  var matches = nqByTitle[key] || [];
+  if (!matches.length) return '';
+  var parts = matches.map(function(nb) {
+    var quizzes = Object.keys(nb.uses).map(function(u) { return u.split(' — ')[0]; })
+      .filter(function(t, i, arr) { return arr.indexOf(t) === i; });
+    return 'Item bank ' + nb.id + (nb.archived ? ' (ARCHIVED)' : '') + ' used by: ' + quizzes.join(', ');
+  });
+  var notes = [];
+  if (classicTitleCounts[key] > 1) notes.push('Title shared by ' + classicTitleCounts[key] + ' Classic banks');
+  if (matches.length > 1) notes.push('Title shared by ' + matches.length + ' item banks');
+  return (notes.length ? notes.join('; ') + '\n' : '') + parts.join('\n');
+}
+
+function writeBankAuditSheet(banks, usage, linked, nqUsage) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var name = 'Bank Audit';
   var sheet = ss.getSheetByName(name);
   if (sheet) { ss.deleteSheet(sheet); }
   sheet = ss.insertSheet(name, 0);
 
-  var rows = [['Bank ID', 'Bank Title', '# Questions', 'Used?', 'Used By']];
+  var nqByTitle = {};
+  if (nqUsage) {
+    Object.keys(nqUsage.banks).forEach(function(id) {
+      var nb = nqUsage.banks[id];
+      if (!nb.title) return;
+      var key = normalizeBankTitle(nb.title);
+      (nqByTitle[key] = nqByTitle[key] || []).push(nb);
+    });
+  }
+  var classicTitleCounts = {};
+  banks.forEach(function(b) {
+    var key = normalizeBankTitle(b.title);
+    classicTitleCounts[key] = (classicTitleCounts[key] || 0) + 1;
+  });
+
+  var rows = [['Bank ID', 'Bank Title', '# Questions', 'Used?', 'Used By', 'Matching New Quizzes Item Bank']];
   banks.slice().sort(function(a, b) {
     return a.title.localeCompare(b.title) || a.id - b.id;
   }).forEach(function(b) {
@@ -287,7 +336,8 @@ function writeBankAuditSheet(banks, usage, linked) {
       b.title,
       b.questionCount,
       status,
-      u ? Object.keys(u).join('\n') : ''
+      u ? Object.keys(u).join('\n') : '',
+      migratedBankNote(b, nqByTitle, classicTitleCounts, nqUsage)
     ]);
   });
 
